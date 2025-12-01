@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net.NetworkInformation;
 using System.Text.Json;
 using System.Windows;
 
@@ -16,13 +18,14 @@ namespace DnsChanger
             InitializeComponent();
             LoadDefaultDns();
             LoadSavedDns();
+
         }
 
         private void LoadDefaultDns()
         {
-            DnsList.Items.Add("8.8.8.8, 8.8.4.4  (Google)");
-            DnsList.Items.Add("1.1.1.1, 1.0.0.1  (Cloudflare)");
-            DnsList.Items.Add("9.9.9.9, 149.112.112.112  (Quad9)");
+            DnsList.Items.Add("8.8.8.8, 8.8.4.4 (Google)");
+            DnsList.Items.Add("1.1.1.1, 1.0.0.1 (Cloudflare)");
+            DnsList.Items.Add("9.9.9.9, 149.112.112.112 (Quad9)");
         }
 
         private void LoadSavedDns()
@@ -39,9 +42,11 @@ namespace DnsChanger
         private void SaveDns()
         {
             var list = new List<string>();
+
             foreach (var item in DnsList.Items)
             {
                 string s = item.ToString();
+
                 if (!s.Contains("(Google)") &&
                     !s.Contains("(Cloudflare)") &&
                     !s.Contains("(Quad9)"))
@@ -69,9 +74,30 @@ namespace DnsChanger
 
             SaveDns();
 
-            PrimaryBox.Text = "";
-            SecondaryBox.Text = "";
+            PrimaryBox.Clear();
+            SecondaryBox.Clear();
         }
+
+        public static string GetActiveInterface()
+        {
+            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
+
+            foreach (var ni in interfaces)
+            {
+                var props = ni.GetIPProperties();
+
+                bool hasGateway =
+                    props.GatewayAddresses.Any(g => g.Address.ToString().Length > 0);
+
+                if (ni.OperationalStatus == OperationalStatus.Up && hasGateway)
+                {
+                    return ni.Name; 
+                }
+            }
+
+            return null;
+        }
+
 
         private void ApplyDns_Click(object sender, RoutedEventArgs e)
         {
@@ -81,22 +107,29 @@ namespace DnsChanger
                 return;
             }
 
+            string iface = GetActiveInterface();
+            if (iface == null)
+            {
+                MessageBox.Show("No active network interface found.");
+                return;
+            }
+
             string item = DnsList.SelectedItem.ToString();
             var parts = item.Split(',');
 
             string primary = parts[0].Trim();
             string secondary = parts[1].Trim().Split(' ')[0];
 
-            RunCmd($"netsh interface ip set dns name=\"Ethernet\" static {primary}");
-            RunCmd($"netsh interface ip add dns name=\"Ethernet\" {secondary} index=2");
+            RunCmd($"netsh interface ip set dns name=\"{iface}\" static {primary}");
+            RunCmd($"netsh interface ip add dns name=\"{iface}\" {secondary} index=2");
 
-            MessageBox.Show("DNS applied.");
+            MessageBox.Show($"DNS applied to: {iface}");
         }
 
         private void RunCmd(string cmd)
         {
             ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + cmd);
-            psi.Verb = "runas";
+            psi.Verb = "runas";         
             psi.CreateNoWindow = true;
             psi.UseShellExecute = true;
             Process.Start(psi);
