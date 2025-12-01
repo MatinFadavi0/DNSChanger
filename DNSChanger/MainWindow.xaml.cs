@@ -116,23 +116,35 @@ namespace DnsChanger
 
             string item = DnsList.SelectedItem.ToString();
             var parts = item.Split(',');
+            string primary = parts[0].Trim().Split(' ')[0];   
+            string secondary = parts[1].Trim().Split(' ')[0]; 
 
-            string primary = parts[0].Trim();
-            string secondary = parts[1].Trim().Split(' ')[0];
-
-            RunCmd($"netsh interface ip set dns name=\"{iface}\" static {primary}");
+            if (!RunCmd($"netsh interface ip set dns name=\"{iface}\" static {primary}")) return;
             RunCmd($"netsh interface ip add dns name=\"{iface}\" {secondary} index=2");
 
             MessageBox.Show($"DNS applied to: {iface}");
         }
 
-        private void RunCmd(string cmd)
+        private bool RunCmd(string cmd)
         {
-            ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + cmd);
-            psi.Verb = "runas";         
-            psi.CreateNoWindow = true;
-            psi.UseShellExecute = true;
-            Process.Start(psi);
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + cmd)
+                {
+                    Verb = "runas",
+                    CreateNoWindow = true,
+                    UseShellExecute = true
+                };
+                var proc = Process.Start(psi);
+                proc.WaitForExit(); 
+                return proc.ExitCode == 0;
+            }
+            catch
+            {
+                MessageBox.Show("Failed to run command. Make sure you run the app as Administrator.");
+                return false;
+            }
         }
+
     }
 }
